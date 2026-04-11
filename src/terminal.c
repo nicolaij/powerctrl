@@ -28,6 +28,26 @@ int parameters_changed = 0;
 
 menu_t menu[] = {
     /*0*/ {.id = "idn", .name = "Номер устройства", .izm = "", .val = 1, .min = 1, .max = 1000000},
+    {.id = "IRange", .name = "Предел измерения тока", .izm = "А", .val = 100.0, .min = 0, .max = 1000},
+    {.id = "IGain", .name = "Коэфф. усиление тока (1,2,4)", .izm = "", .val = 1.0, .min = 0, .max = 4},
+    {.id = "AIGain", .name = "Фаза A коэфф. усиления тока", .izm = "0.0244%/", .val = 0, .min = -2048, .max = 2047},
+    {.id = "BIGain", .name = "Фаза B коэфф. усиления тока", .izm = "0.0244%/", .val = 0, .min = -2048, .max = 2047},
+    {.id = "CIGain", .name = "Фаза C коэфф. усиления тока", .izm = "0.0244%/", .val = 0, .min = -2048, .max = 2047},
+    {.id = "AIOffset", .name = "Фаза A смещение тока", .izm = "0.94%/L", .val = 0, .min = -2048, .max = 2047},
+    {.id = "BIOffset", .name = "Фаза B смещение тока", .izm = "0.94%/L", .val = 0, .min = -2048, .max = 2047},
+    {.id = "CIOffset", .name = "Фаза C смещение тока", .izm = "0.94%/L", .val = 0, .min = -2048, .max = 2047},
+
+    {.id = "URange", .name = "Предел измерения напряжения", .izm = "В", .val = 500.0, .min = 0, .max = 10000},
+    {.id = "UGain", .name = "Коэфф. усиление напряжения (1,2,4)", .izm = "", .val = 1.0, .min = 0, .max = 4},
+    {.id = "AVRMSGain", .name = "Фаза A коэфф. усиления напряжения", .izm = "0.0244%/", .val = 0, .min = -2048, .max = 2047},
+    {.id = "BVRMSGain", .name = "Фаза B коэфф. усиления напряжения", .izm = "0.0244%/", .val = 0, .min = -2048, .max = 2047},
+    {.id = "CVRMSGain", .name = "Фаза C коэфф. усиления напряжения", .izm = "0.0244%/", .val = -0, .min = -2048, .max = 2047},
+    {.id = "AVOffset", .name = "Фаза A смещение напряжения", .izm = "0.042%/L", .val = 0, .min = -2048, .max = 2047},
+    {.id = "BVOffset", .name = "Фаза B смещение напряжения", .izm = "0.042%/L", .val = 0, .min = -2048, .max = 2047},
+    {.id = "CVOffset", .name = "Фаза C смещение напряжения", .izm = "0.042%/L", .val = 0, .min = -2048, .max = 2047},
+
+    {.id = "Cycle", .name = "Время цикла регулирования", .izm = "мс", .val = 200.0, .min = 20, .max = 10000},
+
     // {.id = "waitwifi", .name = "Ожидание WiFi", .izm = "мин", .val = 3, .min = 1, .max = 1000000},
     //{.id = "MAC1", .name = "ESPNOW! Target MAC", .izm = "", .val = 0, .min = 0, .max = 0xFFFFFF},
     //{.id = "MAC2", .name = "", .izm = "", .val = 0, .min = 0, .max = 0xFFFFFF},
@@ -45,6 +65,7 @@ menu_t menu[] = {
     {.id = "pidP", .name = "PID P", .izm = "", .val = 0.1000, .min = 0.000001, .max = 999999},
     {.id = "pidI", .name = "PID I", .izm = "", .val = 1.0, .min = 0, .max = 999999},
     {.id = "pidD", .name = "PID D", .izm = "", .val = 0, .min = 0, .max = 999999},
+
     //{.id = "pidintMax", .name = "PID Intergal maximum", .izm = "", .val = 255, .min = -999999, .max = 999999},
     //{.id = "pidintMin", .name = "PID Intergal minimum", .izm = "", .val = 0, .min = -999999, .max = 999999},
     //{.id = "pidMax", .name = "PID Out maximum", .izm = "", .val = 255, .min = 0, .max = 999999},
@@ -185,20 +206,21 @@ int get_menu_html(char *buf)
             return pos;
         }
 
-        if (index == 2) // MAC
-        {
-            uint8_t mac_addr[6];
-            int part1 = menu[index].val;
-            int part2 = menu[index + 1].val;
-            mac_addr[0] = (part1 >> 16) & 0xFF;
-            mac_addr[1] = (part1 >> 8) & 0xFF;
-            mac_addr[2] = (part1 >> 0) & 0xFF;
-            mac_addr[3] = (part2 >> 16) & 0xFF;
-            mac_addr[4] = (part2 >> 8) & 0xFF;
-            mac_addr[5] = (part2 >> 0) & 0xFF;
-            pos += sprintf(&buf[pos], "<tr><td><label for=\"%s\">%s:</label></td><td><input type=\"text\" id=\"%s\" name=\"%s\" value=\"" MACSTR "\"/></td></tr>\n", menu[index].id, menu[index].name, menu[index].id, menu[index].id, MAC2STR(mac_addr));
-        }
-        else if (strlen(menu[index].name) > 0)
+        /*         if (index == 2) // MAC
+                {
+                    uint8_t mac_addr[6];
+                    int part1 = menu[index].val;
+                    int part2 = menu[index + 1].val;
+                    mac_addr[0] = (part1 >> 16) & 0xFF;
+                    mac_addr[1] = (part1 >> 8) & 0xFF;
+                    mac_addr[2] = (part1 >> 0) & 0xFF;
+                    mac_addr[3] = (part2 >> 16) & 0xFF;
+                    mac_addr[4] = (part2 >> 8) & 0xFF;
+                    mac_addr[5] = (part2 >> 0) & 0xFF;
+                    pos += sprintf(&buf[pos], "<tr><td><label for=\"%s\">%s:</label></td><td><input type=\"text\" id=\"%s\" name=\"%s\" value=\"" MACSTR "\"/></td></tr>\n", menu[index].id, menu[index].name, menu[index].id, menu[index].id, MAC2STR(mac_addr));
+                }
+                else  */
+        if (strlen(menu[index].name) > 0)
         {
             pos += sprintf(&buf[pos], "<tr><td><label for=\"%s\">%s:</label></td><td><input type=\"text\" id=\"%s\" name=\"%s\" value=\"%g\"/>%s</td></tr>\n", menu[index].id, menu[index].name, menu[index].id, menu[index].id, menu[index].val, menu[index].izm);
         }
@@ -276,52 +298,48 @@ void console_task(void *arg)
                     int i = 0;
                     for (i = 0; i < sizeof(menu) / sizeof(menu_t); i++)
                     {
-                        if (i == 2) // MAC
-                        {
-                            mac1 = menu[2].val;
-                            mac2 = menu[3].val;
-                            mac_addr[0] = (mac1 >> 16) & 0xFF;
-                            mac_addr[1] = (mac1 >> 8) & 0xFF;
-                            mac_addr[2] = (mac1 >> 0) & 0xFF;
-                            mac_addr[3] = (mac2 >> 16) & 0xFF;
-                            mac_addr[4] = (mac2 >> 8) & 0xFF;
-                            mac_addr[5] = (mac2 >> 0) & 0xFF;
-                            ESP_LOGI("menu", "%2i. %s: " MACSTR, i + 1, menu[i].name, MAC2STR(mac_addr));
-                        }
-                        else if (strlen(menu[i].name) > 0)
+                        /*                         if (i == 2) // MAC
+                                                {
+                                                    mac1 = menu[2].val;
+                                                    mac2 = menu[3].val;
+                                                    mac_addr[0] = (mac1 >> 16) & 0xFF;
+                                                    mac_addr[1] = (mac1 >> 8) & 0xFF;
+                                                    mac_addr[2] = (mac1 >> 0) & 0xFF;
+                                                    mac_addr[3] = (mac2 >> 16) & 0xFF;
+                                                    mac_addr[4] = (mac2 >> 8) & 0xFF;
+                                                    mac_addr[5] = (mac2 >> 0) & 0xFF;
+                                                    ESP_LOGI("menu", "%2i. %s: " MACSTR, i + 1, menu[i].name, MAC2STR(mac_addr));
+                                                }
+                                                else */
+                        if (strlen(menu[i].name) > 0)
                             ESP_LOGI("menu", "%2i. %s: %g %s", i + 1, menu[i].name, menu[i].val, menu[i].izm);
                     }
 
-                    ESP_LOGI("menu", "51. DEBUG! DAC1,DAC2 = 100%");
-                    ESP_LOGI("menu", "52. DEBUG! DAC1,DAC2 = 50%");
-                    ESP_LOGI("menu", "53. DEBUG! DAC1,DAC2 = 0%");
                     ESP_LOGI("menu", "54. FreeRTOS INFO");
                     ESP_LOGI("menu", "55. Reboot");
+                    ESP_LOGI("menu", "61. Задать выход A (%i)", holding[0]);
+                    ESP_LOGI("menu", "62. Задать выход B (%i)", holding[1]);
+                    ESP_LOGI("menu", "63. Задать выход C (%i)", holding[2]);
+                    ESP_LOGI("menu", "64. Вкл. регулятор A. Задание: (%i)", holding[6]);
+                    ESP_LOGI("menu", "65. Вкл. регулятор B. Задание: (%i)", holding[7]);
+                    ESP_LOGI("menu", "66. Вкл. регулятор C. Задание: (%i)", holding[8]);
                     ESP_LOGI("menu", "-------------------------------------------");
                     break;
-                case 3: // MAC
-                    mac1 = menu[2].val;
-                    mac2 = menu[3].val;
-                    mac_addr[0] = (mac1 >> 16) & 0xFF;
-                    mac_addr[1] = (mac1 >> 8) & 0xFF;
-                    mac_addr[2] = (mac1 >> 0) & 0xFF;
-                    mac_addr[3] = (mac2 >> 16) & 0xFF;
-                    mac_addr[4] = (mac2 >> 8) & 0xFF;
-                    mac_addr[5] = (mac2 >> 0) & 0xFF;
+                    /*                 case 3: // MAC
+                                        mac1 = menu[2].val;
+                                        mac2 = menu[3].val;
+                                        mac_addr[0] = (mac1 >> 16) & 0xFF;
+                                        mac_addr[1] = (mac1 >> 8) & 0xFF;
+                                        mac_addr[2] = (mac1 >> 0) & 0xFF;
+                                        mac_addr[3] = (mac2 >> 16) & 0xFF;
+                                        mac_addr[4] = (mac2 >> 8) & 0xFF;
+                                        mac_addr[5] = (mac2 >> 0) & 0xFF;
 
-                    ESP_LOGI("menu", "-------------------------------------------");
-                    ESP_LOGI("menu", "%2i. %s: " MACSTR ". Введите новое значение: ", (int)n, menu[(int)n - 1].name, MAC2STR(mac_addr));
-                    ESP_LOGI("menu", "-------------------------------------------");
-                    break;
-                case 51: // all adc = 255
-                    run_stage = 100;
-                    break;
-                case 52: // all adc  = 127
-                    run_stage = 101;
-                    break;
-                case 53: // all adc  = 0
-                    run_stage = 102;
-                    break;
+                                        ESP_LOGI("menu", "-------------------------------------------");
+                                        ESP_LOGI("menu", "%2i. %s: " MACSTR ". Введите новое значение: ", (int)n, menu[(int)n - 1].name, MAC2STR(mac_addr));
+                                        ESP_LOGI("menu", "-------------------------------------------");
+                                        break; */
+
                 case 54: // FreeRTOS INFO
                     ESP_LOGI("info", "Minimum free memory: %lu bytes", esp_get_minimum_free_heap_size());
                     ESP_LOGI("wifi_task", "Task watermark: %d bytes", uxTaskGetStackHighWaterMark(xHandleWifi));
@@ -338,6 +356,24 @@ void console_task(void *arg)
                     vTaskDelay(500 / portTICK_PERIOD_MS);
                     esp_restart();
                     break;
+                case 61: // A out
+                    ESP_LOGI("фаза A", "Введите значение выхода (0-100%):");
+                    break;
+                case 62: // B out
+                    ESP_LOGI("фаза B", "Введите значение выхода (0-100%):");
+                    break;
+                case 63: // C out
+                    ESP_LOGI("фаза C", "Введите значение выхода (0-100%):");
+                    break;
+                case 64: // A out
+                    ESP_LOGI("Регулятор A", "Введите задание мощности (0-32000):");
+                    break;
+                case 65: // B out
+                    ESP_LOGI("Регулятор B", "Введите задание мощности (0-32000):");
+                    break;
+                case 66: // C out
+                    ESP_LOGI("Регулятор C", "Введите задание мощности (0-32000):");
+                    break;
                 default:
                     if ((int)n > 0 && (int)n <= sizeof(menu) / sizeof(menu_t))
                     {
@@ -352,7 +388,7 @@ void console_task(void *arg)
                     break;
                 }
                 break;
-            case 3: // MAC ESPNOW!
+            /* case 3: // MAC ESPNOW!
                 if (sscanf((const char *)serialbuffer, "%hhx%*[: -]%hhx%*[: -]%hhx%*[: -]%hhx%*[: -]%hhx%*[: -]%hhx",
                            &mac_addr[0], &mac_addr[1], &mac_addr[2], &mac_addr[3], &mac_addr[4], &mac_addr[5]) == 6)
                 {
@@ -374,6 +410,27 @@ void console_task(void *arg)
                 {
                     ESP_LOGE(TAG, "Error MAC format");
                 }
+                break; */
+            case 61: // A out
+                holding[0] = (int)n;
+                break;
+            case 62: // B out
+                holding[1] = (int)n;
+                break;
+            case 63: // C out
+                holding[2] = (int)n;
+                break;
+            case 64: // A out
+                holding[6] = (int)n;
+                holding[9] = 1;
+                break;
+            case 65: // B out
+                holding[7] = (int)n;
+                holding[10] = 1;
+                break;
+            case 66: // C out
+                holding[8] = (int)n;
+                holding[11] = 1;
                 break;
 
             default:
@@ -417,7 +474,7 @@ void console_task(void *arg)
                 break;
             }
 
-            if ((selected_menu_id == 0 && n > 0) && (n < sizeof(menu) / sizeof(menu_t)))
+            if ((selected_menu_id == 0 && n > 0) && ((n <= sizeof(menu) / sizeof(menu_t)) || (n >= 61 && n <= 66)))
                 selected_menu_id = n;
             else
                 selected_menu_id = 0;
@@ -480,8 +537,6 @@ static void button_event_cb(void *arg, void *data)
         {
             key_mode = 1;
             ESP_ERROR_CHECK(led_indicator_start(led_handle_0, BLINK_TEST_BLINK_LOOP));
-
-            run_stage = 999;
 
             if (xHandleWifi)
                 xTaskNotify(xHandleWifi, NOTYFY_WIFI_SWITCH | NOTYFY_WIFI, eSetValueWithOverwrite);

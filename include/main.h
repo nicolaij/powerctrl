@@ -12,6 +12,8 @@
 
 #include "freertos/ringbuf.h"
 
+#include "driver/gpio.h"
+
 #include <sys/time.h>
 #include "esp_sleep.h"
 
@@ -23,6 +25,10 @@
 #define SDA_PIN GPIO_NUM_21
 #define SCL_PIN GPIO_NUM_22
 #define BTN_PIN GPIO_NUM_0
+
+#define OUTA_PIN GPIO_NUM_33
+#define OUTB_PIN GPIO_NUM_32
+#define OUTC_PIN GPIO_NUM_26
 
 
 #define LED_PIN GPIO_NUM_2
@@ -52,7 +58,7 @@ extern TaskHandle_t xHandleWifi;
 extern TaskHandle_t xHandleADC;
 extern TaskHandle_t xHandleConsole;
 
-extern int run_stage;
+extern int16_t holding[128];
 
 #define NOTYFY_WIFI BIT0
 #define NOTYFY_WIFI_SWITCH BIT10
