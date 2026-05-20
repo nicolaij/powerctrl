@@ -7,11 +7,10 @@
 #include "driver/gpio.h"
 #include "button_gpio.h"
 #include "iot_button.h"
+#include "led_indicator_gpio.h"
 
 #include "nvs.h"
 #include "nvs_flash.h"
-
-#include "led_indicator_gpio.h"
 
 static const char *TAG = "terminal";
 
@@ -25,6 +24,11 @@ int setup_current = 25.0;
 extern QueueHandle_t xQueueDisplay;
 
 int parameters_changed = 0;
+
+float graphik_tin1 = 20;
+float graphik_tout1 = 30;
+float graphik_tin2 = -10;
+float graphik_tout2 = 80;
 
 menu_t menu[] = {
     /*0*/ {.id = "idn", .name = "Номер устройства", .izm = "", .val = 1, .min = 1, .max = 1000000},
@@ -46,7 +50,7 @@ menu_t menu[] = {
     {.id = "BVOffset", .name = "Фаза B смещение напряжения", .izm = "0.042%/L", .val = 0, .min = -2048, .max = 2047},
     {.id = "CVOffset", .name = "Фаза C смещение напряжения", .izm = "0.042%/L", .val = 0, .min = -2048, .max = 2047},
 
-    {.id = "Cycle", .name = "Время цикла регулирования", .izm = "мс", .val = 200.0, .min = 20, .max = 10000},
+    {.id = "PCycle", .name = "Время цикла регул. мощности", .izm = "мс", .val = 200.0, .min = 20, .max = 10000},
 
     // {.id = "waitwifi", .name = "Ожидание WiFi", .izm = "мин", .val = 3, .min = 1, .max = 1000000},
     //{.id = "MAC1", .name = "ESPNOW! Target MAC", .izm = "", .val = 0, .min = 0, .max = 0xFFFFFF},
@@ -62,14 +66,35 @@ menu_t menu[] = {
     //{.id = "Isetmax", .name = "Максимум I задание", .izm = "А", .val = 30.0, .min = 0, .max = 100},
     //{.id = "ADCmax", .name = "Максимум ADC задание", .izm = "", .val = 3000, .min = 0, .max = 10000},
     //{.id = "ADCk1", .name = "Линейность регулятора", .izm = "", .val = 0.08, .min = 0, .max = 0.1},
-    {.id = "pidP", .name = "PID P", .izm = "", .val = 0.1000, .min = 0.000001, .max = 999999},
-    {.id = "pidI", .name = "PID I", .izm = "", .val = 1.0, .min = 0, .max = 999999},
-    {.id = "pidD", .name = "PID D", .izm = "", .val = 0, .min = 0, .max = 999999},
+
+    {.id = "pidP", .name = "Power PID P", .izm = "", .val = 0.1000, .min = 1.0E-10f, .max = 1.0E+10f},
+    {.id = "pidI", .name = "Power PID I", .izm = "", .val = 1.0, .min = 0, .max = 999999},
+    {.id = "pidD", .name = "Power PID D", .izm = "", .val = 0, .min = 0, .max = 999999},
 
     //{.id = "pidintMax", .name = "PID Intergal maximum", .izm = "", .val = 255, .min = -999999, .max = 999999},
     //{.id = "pidintMin", .name = "PID Intergal minimum", .izm = "", .val = 0, .min = -999999, .max = 999999},
     //{.id = "pidMax", .name = "PID Out maximum", .izm = "", .val = 255, .min = 0, .max = 999999},
     //{.id = "pidMin", .name = "PID Out minimum", .izm = "", .val = 0, .min = 0, .max = 999999},
+
+    {.id = "Tout1", .name = "График. точка 1 Мин. T отопления", .izm = "С", .val = 30.0, .min = 20, .max = 200},
+    {.id = "Tin1", .name = "График. точка 1 Макс. T наруж. возд.", .izm = "С", .val = 20.0, .min = -50, .max = 200},
+    {.id = "Tout2", .name = "График. точка 2 Макс. T отопления", .izm = "С", .val = 80.0, .min = 20, .max = 200},
+    {.id = "Tin2", .name = "График. точка 2 Мин. T наруж. возд.", .izm = "С", .val = -10.0, .min = -50, .max = 200},
+
+    {.id = "TCycle", .name = "Время цикла регул. температуры", .izm = "мс", .val = 1000.0, .min = 20, .max = 10000},
+    {.id = "TpidP", .name = "Temperature PID P", .izm = "", .val = 0.001, .min = 1.0E-10f, .max = 1.0E+10f},
+    {.id = "TpidI", .name = "Temperature PID I", .izm = "", .val = 0.01, .min = 0, .max = 999999},
+    {.id = "TpidD", .name = "Temperature PID D", .izm = "", .val = 0, .min = 0, .max = 999999},
+    {.id = "TpidMax", .name = "TempPID Макс. мощность", .izm = "", .val = 100, .min = 0, .max = 1.0E+10f},
+    {.id = "TpidSP", .name = "TempPID Задание", .izm = "С", .val = 40, .min = 0, .max = 200},
+
+    /* При включении Temperature PID на 3 регулятора мощности идет одно задание
+     */
+    {.id = "TpidEna", .name = "Temperature PID Включить", .izm = "", .val = 0, .min = 0, .max = 1},
+
+    {.id = "TSensPID", .name = "№ Датчика для Temperature PID", .izm = "", .val = -1, .min = 0, .max = 10},
+    {.id = "TSensOut", .name = "№ Датчика T нар. воздуха", .izm = "", .val = -1, .min = 0, .max = 10},
+
 };
 
 esp_err_t init_nvs()
@@ -116,12 +141,33 @@ esp_err_t read_nvs_menu()
             default:
                 ESP_LOGE("NVS", "Error (%s) reading!", esp_err_to_name(err));
             }
+
+            if (strcmp("Tout1", menu[i].id) == 0)
+                graphik_tout1 = menu[i].val;
+            if (strcmp("Tout2", menu[i].id) == 0)
+                graphik_tout2 = menu[i].val;
+            if (strcmp("Tin1", menu[i].id) == 0)
+                graphik_tin1 = menu[i].val;
+            if (strcmp("Tin2", menu[i].id) == 0)
+                graphik_tin2 = menu[i].val;
         }
 
         // Close
         nvs_close(my_handle);
     }
     return erro;
+}
+
+/* Температурный график
+Расчет температуры отопления от температуры нар. воздуха
+ */
+float graphik(float t)
+{
+    if (t > graphik_tin1)
+        return graphik_tout1;
+    if (t < graphik_tin2)
+        return graphik_tout2;
+    return (t - graphik_tin2) * (graphik_tout2 - graphik_tout1) / (graphik_tin1 - graphik_tin2) + graphik_tout1;
 }
 
 int get_menu_pos_by_id(const char *id)
@@ -317,40 +363,22 @@ void console_task(void *arg)
 
                     ESP_LOGI("menu", "54. FreeRTOS INFO");
                     ESP_LOGI("menu", "55. Reboot");
-                    ESP_LOGI("menu", "61. Задать выход A (%i)", holding[0]);
-                    ESP_LOGI("menu", "62. Задать выход B (%i)", holding[1]);
-                    ESP_LOGI("menu", "63. Задать выход C (%i)", holding[2]);
-                    ESP_LOGI("menu", "64. Вкл. регулятор A. Задание: (%i)", holding[6]);
-                    ESP_LOGI("menu", "65. Вкл. регулятор B. Задание: (%i)", holding[7]);
-                    ESP_LOGI("menu", "66. Вкл. регулятор C. Задание: (%i)", holding[8]);
+                    ESP_LOGI("menu", "61. Задать выход A (0-100) (%i)", holding[0]);
+                    ESP_LOGI("menu", "62. Задать выход B (0-100) (%i)", holding[1]);
+                    ESP_LOGI("menu", "63. Задать выход C (0-100) (%i)", holding[2]);
+                    ESP_LOGI("menu", "64. Вкл. регул. мощности A. Задание: (%i)", holding[3]);
+                    ESP_LOGI("menu", "65. Вкл. регул. мощности B. Задание: (%i)", holding[4]);
+                    ESP_LOGI("menu", "66. Вкл. регул. мощности C. Задание: (%i)", holding[5]);
+                    ESP_LOGI("menu", "67. Вкл. регул. мощности Т. Задание: (%.1f)", holding[10] / 10.0f);
                     ESP_LOGI("menu", "-------------------------------------------");
                     break;
-                    /*                 case 3: // MAC
-                                        mac1 = menu[2].val;
-                                        mac2 = menu[3].val;
-                                        mac_addr[0] = (mac1 >> 16) & 0xFF;
-                                        mac_addr[1] = (mac1 >> 8) & 0xFF;
-                                        mac_addr[2] = (mac1 >> 0) & 0xFF;
-                                        mac_addr[3] = (mac2 >> 16) & 0xFF;
-                                        mac_addr[4] = (mac2 >> 8) & 0xFF;
-                                        mac_addr[5] = (mac2 >> 0) & 0xFF;
-
-                                        ESP_LOGI("menu", "-------------------------------------------");
-                                        ESP_LOGI("menu", "%2i. %s: " MACSTR ". Введите новое значение: ", (int)n, menu[(int)n - 1].name, MAC2STR(mac_addr));
-                                        ESP_LOGI("menu", "-------------------------------------------");
-                                        break; */
 
                 case 54: // FreeRTOS INFO
                     ESP_LOGI("info", "Minimum free memory: %lu bytes", esp_get_minimum_free_heap_size());
                     ESP_LOGI("wifi_task", "Task watermark: %d bytes", uxTaskGetStackHighWaterMark(xHandleWifi));
-                    ESP_LOGI("adc_task", "Task watermark: %d bytes", uxTaskGetStackHighWaterMark(xHandleADC));
-                    /// ESP_LOGI("modem_task", "Task watermark: %d bytes", uxTaskGetStackHighWaterMark(xHandleNB));
-                    // ESP_LOGI("console_task", "Task watermark: %d bytes", uxTaskGetStackHighWaterMark(xHandleConsole));
-                    /*
-                                        char statsbuf[600];
-                                        vTaskGetRunTimeStats(statsbuf);
-                                        printf(statsbuf);
-                    */
+                    ESP_LOGI("powermeter_task", "Task watermark: %d bytes", uxTaskGetStackHighWaterMark(xHandlePower));
+                    ESP_LOGI("rtd_task", "Task watermark: %d bytes", uxTaskGetStackHighWaterMark(xHandleRTD));
+                    ESP_LOGI("dallas_task", "Task watermark: %d bytes", uxTaskGetStackHighWaterMark(xHandleDallas));
                     break;
                 case 55: // Reboot
                     vTaskDelay(500 / portTICK_PERIOD_MS);
@@ -374,6 +402,9 @@ void console_task(void *arg)
                 case 66: // C out
                     ESP_LOGI("Регулятор C", "Введите задание мощности (0-32000):");
                     break;
+                case 67: // C out
+                    ESP_LOGI("Регулятор Температуры", "Введите задание (0-100.0):");
+                    break;
                 default:
                     if ((int)n > 0 && (int)n <= sizeof(menu) / sizeof(menu_t))
                     {
@@ -388,29 +419,6 @@ void console_task(void *arg)
                     break;
                 }
                 break;
-            /* case 3: // MAC ESPNOW!
-                if (sscanf((const char *)serialbuffer, "%hhx%*[: -]%hhx%*[: -]%hhx%*[: -]%hhx%*[: -]%hhx%*[: -]%hhx",
-                           &mac_addr[0], &mac_addr[1], &mac_addr[2], &mac_addr[3], &mac_addr[4], &mac_addr[5]) == 6)
-                {
-                    esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
-                    if (err == ESP_OK)
-                    {
-                        ESP_LOGD("NVS", "Write  \"%s\" : \"" MACSTR "\"", menu[2].id, MAC2STR(mac_addr));
-                        mac1 = (mac_addr[0] << 16) | (mac_addr[1] << 8) | (mac_addr[2]);
-                        menu[2].val = mac1;
-                        err = nvs_set_blob(my_handle, menu[2].id, &menu[2].val, sizeof(float));
-
-                        mac2 = (mac_addr[3] << 16) | (mac_addr[4] << 8) | (mac_addr[5]);
-                        menu[3].val = mac2;
-                        err = nvs_set_blob(my_handle, menu[3].id, &menu[3].val, sizeof(float));
-                        nvs_close(my_handle);
-                    }
-                }
-                else
-                {
-                    ESP_LOGE(TAG, "Error MAC format");
-                }
-                break; */
             case 61: // A out
                 holding[0] = (int)n;
                 break;
@@ -420,19 +428,34 @@ void console_task(void *arg)
             case 63: // C out
                 holding[2] = (int)n;
                 break;
-            case 64: // A out
-                holding[6] = (int)n;
-                holding[9] = 1;
+            case 64: // регулятор A out
+                holding[3] = (int)n;
+                if (holding[3] == 0)
+                    holding[9] &= ~BIT0;
+                else
+                    holding[9] |= BIT0;
                 break;
-            case 65: // B out
-                holding[7] = (int)n;
-                holding[10] = 1;
+            case 65: // регулятор B out
+                holding[4] = (int)n;
+                if (holding[4] == 0)
+                    holding[9] &= ~BIT1;
+                else
+                    holding[9] |= BIT1;
                 break;
-            case 66: // C out
-                holding[8] = (int)n;
-                holding[11] = 1;
+            case 66: // регулятор C out
+                holding[5] = (int)n;
+                if (holding[5] == 0)
+                    holding[9] &= ~BIT2;
+                else
+                    holding[9] |= BIT2;
                 break;
-
+            case 67: // регулятор T
+                holding[10] = n * 10.0f;
+                if (holding[10] == 0)
+                    holding[9] &= ~BIT3;
+                else
+                    holding[9] |= BIT3;
+                break;
             default:
                 if (selected_menu_id > 0 && selected_menu_id <= sizeof(menu) / sizeof(menu_t)) // selected_menu_id - номер пункта меню, n - value
                 {

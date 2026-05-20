@@ -2,18 +2,49 @@
 #include "mbcontroller.h" // for mbcontroller defines and api
 #include "driver/gptimer.h"
 
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+
 TaskHandle_t xHandleWifi = NULL;
-TaskHandle_t xHandleADC = NULL;
 TaskHandle_t xHandlePower = NULL;
+TaskHandle_t xHandleRTD = NULL;
 TaskHandle_t xHandleConsole = NULL;
+TaskHandle_t xHandleDallas = NULL;
 
 static void *mbc_slave_handle = NULL;
-int16_t holding[128];
+
+/*
+0 - задание мощности для фазы A (0 - 100)%
+1 - задание мощности для фазы B (0 - 100)%
+2 - задание мощности для фазы C (0 - 100)%
+3 - задание мощности регулятора P для фазы А (0 - 32000)W
+4 - задание мощности регулятора P для фазы B (0 - 32000)W
+5 - задание мощности регулятора P для фазы C (0 - 32000)W
+
+9 - биты включение регуляторов 0:PA, 1:PB, 2:PC; 3:T
+10 - задание температуры нагревателя (RTD) (0 - 1000) 0.1С
+*/
+int16_t holding[16];
+
+/*
+0 - измеренный ток для фазы A (0 - 10000) 100А (0.01А)
+1 - измеренный ток для фазы B (0 - 10000) 100А (0.01А)
+2 - измеренный ток для фазы C (0 - 10000) 100А (0.01А)
+3 - измеренное напряжение для фазы A (0 - 2500) 250В (0.1В)
+4 - измеренное напряжение для фазы B (0 - 2500) 250В (0.1В)
+5 - измеренное напряжение для фазы C (0 - 2500) 250В (0.1В)
+6 - измеренная мощность для фазы A (0 - 32000)W 32kW (1W)
+7 - измеренная мощность для фазы A (0 - 32000)W 32kW (1W)
+8 - измеренная мощность для фазы A (0 - 32000)W 32kW (1W)
+9 -
+10 - температура нагревателя (RTD) (0 - 1000) 0.1С
+*/
+int16_t input[16];
 
 // Расчет по Алгоритму Брезенхема. Прерывание 10мс
 static bool IRAM_ATTR gptimer_callback10(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
 {
-    const int cycle_count = 100;//*(int *)user_data;
+    const int cycle_count = 100; //*(int *)user_data;
 
     static int counter_ = 0;
     static int v1_[3] = {0, 0, 0};
@@ -66,13 +97,46 @@ void app_main()
     init_nvs();
     read_nvs_menu();
 
+    adc_channel_t adc_channel;
+    adc_unit_t adc_unit;
+
+    ESP_ERROR_CHECK(adc_oneshot_io_to_channel(PRESSURE_PIN, &adc_unit, &adc_channel));
+
+    ESP_LOGI("ADC", "Unit: %i, Channel: %i", adc_unit, adc_channel);
+
+    //-------------ADC1 Init---------------//
+    adc_oneshot_unit_handle_t adc1_handle;
+    adc_oneshot_unit_init_cfg_t init_config1 = {
+        .unit_id = adc_unit,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_handle));
+
+    //-------------ADC1 Config---------------//
+    adc_oneshot_chan_cfg_t oneshot_config = {
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_12,
+    };
+
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, adc_channel, &oneshot_config));
+
+    adc_cali_handle_t cali_handle = NULL;
+
+    adc_cali_line_fitting_config_t cali_config = {
+        .unit_id = adc_unit,
+        .atten = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_12,
+    };
+    ESP_ERROR_CHECK(adc_cali_create_scheme_line_fitting(&cali_config, &cali_handle));
+
     xTaskCreate(powermeter_task, "powermeter_task", 1024 * 4, NULL, configMAX_PRIORITIES - 10, &xHandlePower);
-    // xTaskCreate(testpin_task, "powermeter_task", 1024 * 4, NULL, configMAX_PRIORITIES - 10, &xHandlePower);
+    xTaskCreate(rtd_task, "rtd_task", 1024 * 4, NULL, configMAX_PRIORITIES - 12, &xHandleRTD);
     xTaskCreate(btn_task, "btn_task", 1024 * 4, NULL, configMAX_PRIORITIES - 15, NULL);
     xTaskCreate(console_task, "console_task", 1024 * 4, NULL, configMAX_PRIORITIES - 16, &xHandleConsole);
     xTaskCreate(wifi_task, "wifi_task", 1024 * 3, NULL, configMAX_PRIORITIES - 12, &xHandleWifi);
+    xTaskCreate(dallas_task, "dallas_task", 1024 * 3, NULL, configMAX_PRIORITIES - 13, &xHandleDallas);
 
     memset(holding, 0, sizeof(holding));
+    memset(input, 0, sizeof(input));
 
     int Cycle = (int)get_menu_val_by_id("Cycle");
 
@@ -91,6 +155,13 @@ void app_main()
 
     ESP_ERROR_CHECK(mbc_slave_create_serial(&comm_config, &mbc_slave_handle)); // Initialization of Modbus controller
 
+    // Initialization of Input Registers area
+    reg_area.type = MB_PARAM_INPUT;
+    reg_area.start_offset = 0;
+    reg_area.address = input;
+    reg_area.size = sizeof(input);
+    ESP_ERROR_CHECK(mbc_slave_set_descriptor(mbc_slave_handle, reg_area));
+
     reg_area.type = MB_PARAM_HOLDING; // Set type of register area
     reg_area.start_offset = 0;        // Offset of register area in Modbus protocol
     reg_area.address = holding;       // Set pointer to storage instance
@@ -104,7 +175,7 @@ void app_main()
                                  GPIO_NUM_16, UART_PIN_NO_CHANGE,
                                  UART_PIN_NO_CHANGE));
 
-    //esp_err_t err = mbc_slave_start(mbc_slave_handle);
+    // esp_err_t err = mbc_slave_start(mbc_slave_handle);
 
     // setup OUT
     gpio_set_level(OUTA_PIN, 1);
@@ -144,8 +215,36 @@ void app_main()
     ESP_ERROR_CHECK(gptimer_enable(gptimer));
     ESP_ERROR_CHECK(gptimer_start(gptimer));
 
+    int adc_raw, voltage;
+
     while (1)
     {
-        vTaskDelay(100);
+        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, adc_channel, &adc_raw));
+        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(cali_handle, adc_raw, &voltage));
+        const int pressureSensorOffset = 500;
+        const float pressureSensorSens = 4.0f / 3000.0f;
+        if (voltage * 2 < pressureSensorOffset)
+        {
+            ESP_LOGW("ADC", "Pressure < 0 (%i mV). Stop!", voltage * 2);
+            //holding[9] = 0;
+            //holding[0] = 0;
+            //holding[1] = 0;
+            //holding[2] = 0;
+        }
+        else
+        {
+            float pressure = (voltage * 2 - pressureSensorOffset) * pressureSensorSens;
+            ESP_LOGI("ADC", "Pressure = %i mV, %.1f bar", voltage * 2, pressure);
+            if (pressure > 2.8f || pressure < 0.8f)
+            {
+                //holding[9] = 0;
+                //holding[0] = 0;
+                //holding[1] = 0;
+                //holding[2] = 0;
+                ESP_LOGW("ADC", "Pressure! Stop!", voltage * 2);
+            }
+        }
+
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     };
 }

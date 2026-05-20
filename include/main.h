@@ -30,6 +30,8 @@
 #define OUTB_PIN GPIO_NUM_32
 #define OUTC_PIN GPIO_NUM_26
 
+#define ONEWIRE_BUS_GPIO GPIO_NUM_25
+#define ONEWIRE_MAX_DS18B20 3
 
 #define LED_PIN GPIO_NUM_2
 #define FEED_FORWARD_PIN GPIO_NUM_4
@@ -37,11 +39,13 @@
 #define ADC_CHANNEL_CURRENT ADC_CHANNEL_5
 #define ADC_CHANNEL_SET ADC_CHANNEL_0
 
+#define PRESSURE_PIN GPIO_NUM_39
+
 typedef struct
 {
     const char id[10];
     const char name[64];
-    const char izm[8];
+    const char izm[10];
     float val;
     const float min;
     const float max;
@@ -55,10 +59,13 @@ typedef struct
 } displ_t;
 
 extern TaskHandle_t xHandleWifi;
-extern TaskHandle_t xHandleADC;
+extern TaskHandle_t xHandlePower;
 extern TaskHandle_t xHandleConsole;
+extern TaskHandle_t xHandleRTD;
+extern TaskHandle_t xHandleDallas;
 
-extern int16_t holding[128];
+extern int16_t holding[16];
+extern int16_t input[16];
 
 #define NOTYFY_WIFI BIT0
 #define NOTYFY_WIFI_SWITCH BIT10
@@ -82,9 +89,15 @@ void displ_task(void *arg);
 void wifi_task(void *arg);
 void powermeter_task(void *arg);
 void testpin_task(void *arg);
+void rtd_task(void *arg);
+void dallas_task(void *arg);
+
 
 int get_menu_html(char *buf);
 
 esp_err_t ws_send_data(const char *str, const int len);
+
+float graphik(float t);
+
 
 #endif

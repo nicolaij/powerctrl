@@ -31,7 +31,7 @@ int run_stage;
 #define CLIENT_WIFI_SSID "ap1"
 #define CLIENT_WIFI_PASS ""
 
-#define AP_WIFI_SSID "Piloramka"
+#define AP_WIFI_SSID "boiler"
 #define AP_WIFI_PASS "123123123"
 
 /* FreeRTOS event group to signal when we are connected*/
@@ -136,7 +136,7 @@ void wifi_init_softap(uint8_t channel, uint8_t ssid_hidden)
 
     wifi_config.ap.ssid_len = snprintf((char *)wifi_config.ap.ssid, sizeof(wifi_config.ap.ssid), "%s%.0f", AP_WIFI_SSID, get_menu_val_by_id("idn"));
 
-    ESP_ERROR_CHECK(esp_wifi_set_bandwidth(ESP_IF_WIFI_AP, WIFI_BW_HT20)); // иначе не работает 11 канал
+    ESP_ERROR_CHECK(esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW20)); // иначе не работает 11 канал
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -234,17 +234,7 @@ static esp_err_t menu_get_handler(httpd_req_t *req)
 
     const char http3[] = "</div><input type=\"submit\" value=\"Submit\" /></form><br><textarea id=\"txt\" rows=\"10\" cols=\"100\" readonly></textarea>";
 
-    const char http4[] = "<div>"
-                         "<button onclick=\"sendMessage('DAC=0')\">DEBUG! DAC = 0%</button>&nbsp;&nbsp;&nbsp;"
-                         "<button onclick=\"sendMessage('DAC=127')\">DEBUG! DAC = 50%</button>&nbsp;&nbsp;&nbsp;"
-                         "<button onclick=\"sendMessage('DAC=255')\">DEBUG! DAC = 100%</button>"
-                         "</div><div>"
-                         "<button onclick=\"sendMessage('Current=10')\">DEBUG! Current = 10A</button>&nbsp;&nbsp;&nbsp;"
-                         "<button onclick=\"sendMessage('Current=50')\">DEBUG! Current = 50A</button>"
-                         "</div>"
-                         "<br><div style=\"display: flex; gap: 10px;\">"
-                         "</div>"
-                         "<script>\nconst socket = new WebSocket(\"ws://\" + location.host + \"/ws\");\n"
+    const char http4[] = "<script>\nconst socket = new WebSocket(\"ws://\" + location.host + \"/ws\");\n"
                          "const textarea = document.getElementById(\"txt\");"
                          "socket.onmessage = function (event) {"
                          "textarea.value += event.data + \"\\n\";"
@@ -257,7 +247,7 @@ static esp_err_t menu_get_handler(httpd_req_t *req)
     httpd_resp_set_type(req, HTTPD_TYPE_TEXT);
     httpd_resp_send_chunk(req, http1, sizeof(http1));
 
-    char buf[128];
+    char buf[256];
     int s = sprintf(buf, "<b>MAC address:</b> " MACSTR "<br>", MAC2STR(mac));
     httpd_resp_send_chunk(req, buf, s);
 
@@ -270,6 +260,10 @@ static esp_err_t menu_get_handler(httpd_req_t *req)
     } while (l > 0);
 
     httpd_resp_send_chunk(req, http3, sizeof(http3));
+
+    s = sprintf(buf, "<div><input type=\"text\" id=\"inputTemperature\" value=\"%.1f\"><button onclick=\"sendMessage('TemperatureSetup=' + document.getElementById('inputTemperature').value)\">Temperature Setup</button></div>", holding[10] / 10.0f);
+    httpd_resp_send_chunk(req, buf, s);
+
     httpd_resp_send_chunk(req, http4, sizeof(http4));
     httpd_resp_sendstr_chunk(req, NULL);
     return ESP_OK;
@@ -575,25 +569,12 @@ static esp_err_t ws_handler(httpd_req_t *req)
 
     ESP_LOGI(TAGH, "ws_handler: httpd_handle_t=%p, sockfd=%d, client_info:%d", req->handle, httpd_req_to_sockfd(req), httpd_ws_get_fd_info(req->handle, httpd_req_to_sockfd(req)));
 
-    if (strncmp("DAC=255", (const char *)ws_pkt.payload, 7) == 0)
+    const char str[] = "TemperatureSetup=";
+    if (strncmp(str, (const char *)ws_pkt.payload, sizeof(str) - 1) == 0)
     {
-        run_stage = 100;
-    }
-    if (strncmp("DAC=127", (const char *)ws_pkt.payload, 7) == 0)
-    {
-        run_stage = 101;
-    }
-    if (strncmp("DAC=0", (const char *)ws_pkt.payload, 5) == 0)
-    {
-        run_stage = 102;
-    }
-    if (strncmp("Current=10", (const char *)ws_pkt.payload, 10) == 0)
-    {
-        run_stage = 110;
-    }
-    if (strncmp("Current=50", (const char *)ws_pkt.payload, 10) == 0)
-    {
-        run_stage = 111;
+        ESP_LOGV(TAGH, "Found TemperatureSetup=%f", atoff((const char *)ws_pkt.payload + sizeof(str) - 1));
+
+        holding[10] = atoff((const char *)ws_pkt.payload + sizeof(str) - 1) * 10.0f;
     }
 
     free(buf);

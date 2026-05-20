@@ -1,2 +1,6 @@
 dependencies:
   espressif/esp-modbus: "*"
+  espressif/led_indicator: "*"
+  espressif/button: "*"
+  espressif/ds18b20: "*"
+  

@@ -7,7 +7,7 @@
 #include "pid_ctrl.h"
 
 spi_device_handle_t spi2;
-SemaphoreHandle_t ready_sem; ///< Semaphore for ready signal
+SemaphoreHandle_t ready_sem1; ///< Semaphore for ready signal
 
 static void IRAM_ATTR irq_isr_handler(void *arg)
 {
@@ -15,7 +15,7 @@ static void IRAM_ATTR irq_isr_handler(void *arg)
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
     // xTaskNotifyFromISR(xTaskI2C, NOTYFY_SENSOR_SET_MAGACC_INT, eSetBits, &xHigherPriorityTaskWoken);
-    xSemaphoreGiveFromISR(ready_sem, &xHigherPriorityTaskWoken);
+    xSemaphoreGiveFromISR(ready_sem1, &xHigherPriorityTaskWoken);
 
     if (xHigherPriorityTaskWoken == pdTRUE)
     {
@@ -46,7 +46,7 @@ int32_t int24(uint8_t r1, uint8_t r2, uint8_t r3)
     }
 }
 
-esp_err_t SPI_write(spi_device_handle_t handle, uint8_t addr, size_t length, uint8_t *data)
+esp_err_t SPI2_write(spi_device_handle_t handle, uint8_t addr, size_t length, uint8_t *data)
 {
     esp_err_t err = ESP_FAIL;
     spi_transaction_t tx = {0};
@@ -74,7 +74,7 @@ esp_err_t SPI_write(spi_device_handle_t handle, uint8_t addr, size_t length, uin
     return err;
 };
 
-esp_err_t SPI_read(spi_device_handle_t handle, uint8_t addr, size_t length, uint8_t *data)
+esp_err_t SPI2_read(spi_device_handle_t handle, uint8_t addr, size_t length, uint8_t *data)
 {
     esp_err_t err = ESP_FAIL;
     spi_transaction_t tx = {0};
@@ -152,7 +152,7 @@ void powermeter_task(void *arg)
     ret = spi_bus_add_device(SPI2_HOST, &devcfg, &spi2);
     ESP_ERROR_CHECK(ret);
 
-    ready_sem = xSemaphoreCreateBinary();
+    ready_sem1 = xSemaphoreCreateBinary();
 
     gpio_config_t io_conf = {};
     io_conf.intr_type = GPIO_INTR_NEGEDGE;
@@ -177,11 +177,11 @@ void powermeter_task(void *arg)
 
     // Reset
     buf[0] = SWRST;
-    SPI_write(spi2, OPMODE, 8, buf);
+    SPI2_write(spi2, OPMODE, 8, buf);
 
     int IGain = (int)get_menu_val_by_id("IGain");
     int UGain = (int)get_menu_val_by_id("UGain");
-    int Cycle = (int)get_menu_val_by_id("Cycle");
+    int Cycle = (int)get_menu_val_by_id("PCycle");
     int AIGain = (int)get_menu_val_by_id("AIGain");
     int BIGain = (int)get_menu_val_by_id("BIGain");
     int CIGain = (int)get_menu_val_by_id("CIGain");
@@ -227,7 +227,7 @@ void powermeter_task(void *arg)
     buf[2] = irqflags;
 
     // configure IRQ
-    SPI_write(spi2, MASK, 24, buf);
+    SPI2_write(spi2, MASK, 24, buf);
 
     int gain = 0;
 
@@ -249,85 +249,97 @@ void powermeter_task(void *arg)
         gain |= 0b0100 << 4;
     }
 
-    if (gain)
+    // if (gain)
     {
         buf[0] = gain;
-        SPI_write(spi2, GAIN, 8, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, GAIN, 8, buf));
     }
 
-    if (AIGain > 0)
+    // if (AIGain > 0)
     {
         buf[0] = AIGain >> 8;
         buf[1] = AIGain & 0xFF;
-        SPI_write(spi2, AIGAIN, 16, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, AIGAIN, 16, buf));
     }
-    if (BIGain > 0)
+    // if (BIGain > 0)
     {
         buf[0] = BIGain >> 8;
         buf[1] = BIGain & 0xFF;
-        SPI_write(spi2, BIGAIN, 16, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, BIGAIN, 16, buf));
     }
-    if (CIGain > 0)
+    // if (CIGain > 0)
     {
         buf[0] = CIGain >> 8;
         buf[1] = CIGain & 0xFF;
-        SPI_write(spi2, CIGAIN, 16, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, CIGAIN, 16, buf));
     }
-    if (AVRMSGain > 0)
+    // if (AVRMSGain > 0)
     {
         buf[0] = AVRMSGain >> 8;
         buf[1] = AVRMSGain & 0xFF;
-        SPI_write(spi2, AVRMSGAIN, 16, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, AVRMSGAIN, 16, buf));
     }
-    if (BVRMSGain > 0)
+    // if (BVRMSGain > 0)
     {
         buf[0] = BVRMSGain >> 8;
         buf[1] = BVRMSGain & 0xFF;
-        SPI_write(spi2, BVRMSGAIN, 16, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, BVRMSGAIN, 16, buf));
     }
-    if (CVRMSGain > 0)
+    // if (CVRMSGain > 0)
     {
         buf[0] = CVRMSGain >> 8;
         buf[1] = CVRMSGain & 0xFF;
-        SPI_write(spi2, CVRMSGAIN, 16, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, CVRMSGAIN, 16, buf));
     }
 
-    if (AIOffset != 0)
+    // if (AIOffset != 0)
     {
         buf[0] = AIOffset >> 8;
+        if (AIOffset < 0)
+            buf[0] |= 0xf0;
         buf[1] = AIOffset & 0xFF;
-        SPI_write(spi2, AIRMSOS, 16, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, AIRMSOS, 16, buf));
     }
-    if (BIOffset != 0)
+    // if (BIOffset != 0)
     {
         buf[0] = BIOffset >> 8;
+        if (BIOffset < 0)
+            buf[0] |= 0xf0;
         buf[1] = BIOffset & 0xFF;
-        SPI_write(spi2, BIRMSOS, 16, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, BIRMSOS, 16, buf));
     }
-    if (CIOffset != 0)
+    // if (CIOffset != 0)
     {
         buf[0] = CIOffset >> 8;
+        if (CIOffset < 0)
+            buf[0] |= 0xf0;
         buf[1] = CIOffset & 0xFF;
-        SPI_write(spi2, CIRMSOS, 16, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, CIRMSOS, 16, buf));
     }
 
-    if (AVOffset != 0)
+    // if (AVOffset != 0)
     {
         buf[0] = AVOffset >> 8;
+        if (AVOffset < 0)
+            buf[0] |= 0xf0;
         buf[1] = AVOffset & 0xFF;
-        SPI_write(spi2, AVRMSOS, 16, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, AVRMSOS, 16, buf));
     }
-    if (BVOffset != 0)
+    // if (BVOffset != 0)
     {
         buf[0] = BVOffset >> 8;
+        if (BVOffset < 0)
+            buf[0] |= 0xf0;
         buf[1] = BVOffset & 0xFF;
-        SPI_write(spi2, BVRMSOS, 16, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, BVRMSOS, 16, buf));
     }
-    if (CVOffset != 0)
+    // if (CVOffset != 0)
     {
         buf[0] = CVOffset >> 8;
+        if (CVOffset < 0)
+            buf[0] |= 0xf0;
         buf[1] = CVOffset & 0xFF;
-        SPI_write(spi2, CVRMSOS, 16, buf);
+        ESP_ERROR_CHECK(SPI2_write(spi2, CVRMSOS, 16, buf));
     }
 
     int32_t vrms[3];
@@ -345,9 +357,9 @@ void powermeter_task(void *arg)
 
     int64_t cycle = Cycle * 1000;
 
-    float fltirms[3];
-    float fltvrms[3];
-    float fltwrms[3];
+    float f_irms[3];
+    float f_vrms[3];
+    float f_wrms[3];
 
     float ki = IRange / 1914753.0f;                 // 2642412.0f; //  100000 / 2642412
     float ku = URange / (1651972.0f * sqrtf(2.0f)); // 10056.0f; //  500000 / 10056
@@ -357,17 +369,17 @@ void powermeter_task(void *arg)
 
     while (1)
     {
-        BaseType_t inter = xSemaphoreTake(ready_sem, Cycle / portTICK_PERIOD_MS * 5);
+        BaseType_t inter = xSemaphoreTake(ready_sem1, Cycle / portTICK_PERIOD_MS * 5);
         time2 = esp_timer_get_time();
 
         int interruptstatus = 0;
 
-        /*         SPI_read(spi2, MASK, 24, buf);
+        /*         SPI2_read(spi2, MASK, 24, buf);
                 ESP_LOGI("ADE7758", "MASK: %x", int24(buf[0], buf[1], buf[2]));
-                SPI_read(spi2, STATUS, 24, buf);
+                SPI2_read(spi2, STATUS, 24, buf);
                 ESP_LOGI("ADE7758", "STATUS: %x", int24(buf[0], buf[1], buf[2])); */
 
-        if (SPI_read(spi2, RSTATUS, 24, buf) == ESP_OK)
+        if (SPI2_read(spi2, RSTATUS, 24, buf) == ESP_OK)
         {
             interruptstatus = uint24(buf[0], buf[1], buf[2]);
         };
@@ -380,15 +392,15 @@ void powermeter_task(void *arg)
         // фаза А
         if (ZXA & interruptstatus)
         {
-            SPI_read(spi2, AWATTHR, 16, buf);
+            SPI2_read(spi2, AWATTHR, 16, buf);
             watth[0] = (buf[0] << 8) | (buf[1]);
             avgwatth[0] += watth[0];
 
-            SPI_read(spi2, AIRMS, 24, buf);
+            SPI2_read(spi2, AIRMS, 24, buf);
             irms[0] = int24(buf[0], buf[1], buf[2]);
             avgirms[0] += irms[0];
 
-            SPI_read(spi2, AVRMS, 24, buf);
+            SPI2_read(spi2, AVRMS, 24, buf);
             vrms[0] = int24(buf[0], buf[1], buf[2]);
             avgvrms[0] += vrms[0];
 
@@ -396,26 +408,30 @@ void powermeter_task(void *arg)
 
             if (avgcntA >= avgcnt || inter == pdFALSE)
             {
-                fltirms[0] = (avgirms[0] / avgcntA) * ki;
-                fltvrms[0] = (avgvrms[0] / avgcntA) * ku;
-                fltwrms[0] = (watth[0] / avgcntA) * kw;
+                f_irms[0] = (avgirms[0] / avgcntA) * ki;
+                f_vrms[0] = (avgvrms[0] / avgcntA) * ku;
+                f_wrms[0] = (watth[0] / avgcntA) * kw;
 
-                ESP_LOGD("ADE7758", "(%3i) Phase A: %.3f V, %.3f A, %.0f W", avgcntA, fltvrms[0], fltirms[0], fltwrms[0]);
+                ESP_LOGD("ADE7758", "(%3i) Phase A: %.3f V, %.3f A, %.0f W", avgcntA, f_vrms[0], f_irms[0], f_wrms[0]);
 
                 avgwatth[0] = 0;
                 avgvrms[0] = 0;
                 avgirms[0] = 0;
                 avgcntA = 0;
 
+                // ток
+                input[0] = f_irms[0] * 100;
+                // напряжение
+                input[3] = f_vrms[0] * 10;
                 // текущая мощность
-                holding[3] = (fltwrms[0] < 32000) ? (int16_t)fltwrms[0] : 32000;
+                input[6] = f_wrms[0];
 
-                float input_error = holding[6] - holding[3];
+                float input_error = input[6] - holding[3];
                 float ret_result = 0;
 
                 ESP_ERROR_CHECK(pid_compute(pid_handleA, input_error, &ret_result));
-                // регулятор включен
-                if (holding[9] == 1)
+                // если регулятор включен
+                if (holding[9] & BIT0)
                     holding[0] = ret_result;
                 else
                     pid_reset_ctrl_block(pid_handleA);
@@ -425,15 +441,15 @@ void powermeter_task(void *arg)
         // фаза B
         if (ZXB & interruptstatus)
         {
-            SPI_read(spi2, BWATTHR, 16, buf);
+            SPI2_read(spi2, BWATTHR, 16, buf);
             watth[1] = (buf[0] << 8) | (buf[1]);
             avgwatth[1] += watth[1];
 
-            SPI_read(spi2, BIRMS, 24, buf);
+            SPI2_read(spi2, BIRMS, 24, buf);
             irms[1] = int24(buf[0], buf[1], buf[2]);
             avgirms[1] += irms[1];
 
-            SPI_read(spi2, BVRMS, 24, buf);
+            SPI2_read(spi2, BVRMS, 24, buf);
             vrms[1] = int24(buf[0], buf[1], buf[2]);
             avgvrms[1] += vrms[1];
 
@@ -441,26 +457,30 @@ void powermeter_task(void *arg)
 
             if (avgcntB >= avgcnt || inter == pdFALSE)
             {
-                fltirms[1] = (avgirms[1] / avgcntB) * ki;
-                fltvrms[1] = (avgvrms[1] / avgcntB) * ku;
-                fltwrms[1] = (watth[1] / avgcntB) * kw;
+                f_irms[1] = (avgirms[1] / avgcntB) * ki;
+                f_vrms[1] = (avgvrms[1] / avgcntB) * ku;
+                f_wrms[1] = (watth[1] / avgcntB) * kw;
 
-                ESP_LOGD("ADE7758", "(%3i) Phase B: %.3f V, %.3f A, %.0f W", avgcntB, fltvrms[1], fltirms[1], fltwrms[1]);
+                ESP_LOGD("ADE7758", "(%3i) Phase B: %.3f V, %.3f A, %.0f W", avgcntB, f_vrms[1], f_irms[1], f_wrms[1]);
 
                 avgwatth[1] = 0;
                 avgvrms[1] = 0;
                 avgirms[1] = 0;
                 avgcntB = 0;
 
+                // ток
+                input[1] = f_irms[1] * 100;
+                // напряжение
+                input[4] = f_vrms[1] * 10;
                 // текущая мощность
-                holding[4] = (fltwrms[1] < 32000) ? (int16_t)fltwrms[1] : 32000;
+                input[7] = f_wrms[1];
 
-                float input_error = holding[7] - holding[4];
+                float input_error = input[7] - holding[4];
                 float ret_result = 0;
 
                 ESP_ERROR_CHECK(pid_compute(pid_handleB, input_error, &ret_result));
-                // регулятор включен
-                if (holding[10] == 1)
+                // если регулятор включен
+                if (holding[9] & BIT1)
                     holding[1] = ret_result;
                 else
                     pid_reset_ctrl_block(pid_handleB);
@@ -470,16 +490,16 @@ void powermeter_task(void *arg)
         // фаза C
         if (ZXC & interruptstatus)
         {
-            SPI_read(spi2, CWATTHR, 16, buf);
+            SPI2_read(spi2, CWATTHR, 16, buf);
             watth[2] = (buf[0] << 8) | (buf[1]);
             avgwatth[2] += watth[2];
 
-            SPI_read(spi2, CIRMS, 24, buf);
+            SPI2_read(spi2, CIRMS, 24, buf);
             irms[2] = int24(buf[0], buf[1], buf[2]);
             avgirms[2] += irms[2];
             // ESP_LOGW("ADE7758", "Read IRMS: %02x%02x%02x", buf[0], buf[1], buf[2]);
 
-            SPI_read(spi2, CVRMS, 24, buf);
+            SPI2_read(spi2, CVRMS, 24, buf);
             vrms[2] = int24(buf[0], buf[1], buf[2]);
             avgvrms[2] += vrms[2];
 
@@ -487,26 +507,30 @@ void powermeter_task(void *arg)
 
             if (avgcntC >= avgcnt || inter == pdFALSE)
             {
-                fltirms[2] = (avgirms[2] / avgcntC) * ki;
-                fltvrms[2] = (avgvrms[2] / avgcntC) * ku;
-                fltwrms[2] = (watth[2] / avgcntC) * kw;
+                f_irms[2] = (avgirms[2] / avgcntC) * ki;
+                f_vrms[2] = (avgvrms[2] / avgcntC) * ku;
+                f_wrms[2] = (watth[2] / avgcntC) * kw;
 
-                ESP_LOGD("ADE7758", "(%3i) Phase C: %.3f V, %.3f A, %.0f W", avgcntC, fltvrms[2], fltirms[2], fltwrms[2]);
+                ESP_LOGD("ADE7758", "(%3i) Phase C: %.3f V, %.3f A, %.0f W", avgcntC, f_vrms[2], f_irms[2], f_wrms[2]);
 
                 avgwatth[2] = 0;
                 avgvrms[2] = 0;
                 avgirms[2] = 0;
                 avgcntC = 0;
 
+                // ток
+                input[2] = f_irms[2] * 100;
+                // напряжение
+                input[5] = f_vrms[2] * 10;
                 // текущая мощность
-                holding[5] = (fltwrms[2] < 32000) ? (int16_t)fltwrms[2] : 32000;
+                input[8] = f_wrms[2];
 
-                float input_error = holding[8] - holding[5];
+                float input_error = input[8] - holding[5];
                 float ret_result = 0;
 
                 ESP_ERROR_CHECK(pid_compute(pid_handleC, input_error, &ret_result));
-                // регулятор включен
-                if (holding[11] == 1)
+                // если регулятор включен
+                if (holding[9] & BIT2)
                     holding[2] = ret_result;
                 else
                     pid_reset_ctrl_block(pid_handleC);
