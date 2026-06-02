@@ -68,6 +68,9 @@ void dallas_task(void *arg)
     {
         vTaskDelay(pdMS_TO_TICKS(1000));
 
+        if (ds18b20_device_num == 0)
+            break;
+
         // trigger temperature conversion for all sensors on the bus
         ESP_ERROR_CHECK(ds18b20_trigger_temperature_conversion_for_all(bus));
         for (int i = 0; i < ds18b20_device_num; i++)
@@ -76,4 +79,5 @@ void dallas_task(void *arg)
             ESP_LOGI(TAG, "temperature read from DS18B20[%d]: %.2fC", i, temperature);
         }
     }
+    vTaskDelete(NULL);
 }

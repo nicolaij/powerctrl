@@ -219,17 +219,23 @@ void app_main()
 
     while (1)
     {
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, adc_channel, &adc_raw));
-        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(cali_handle, adc_raw, &voltage));
+        int adc_sum = 0;
+        for (int i = 0; i < 20; i++)
+        {
+            ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, adc_channel, &adc_raw));
+            vTaskDelay(1);
+            adc_sum += adc_raw;
+        }
+        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(cali_handle, adc_sum / 20, &voltage));
         const int pressureSensorOffset = 500;
         const float pressureSensorSens = 4.0f / 3000.0f;
         if (voltage * 2 < pressureSensorOffset)
         {
             ESP_LOGW("ADC", "Pressure < 0 (%i mV). Stop!", voltage * 2);
-            //holding[9] = 0;
-            //holding[0] = 0;
-            //holding[1] = 0;
-            //holding[2] = 0;
+            // holding[9] = 0;
+            // holding[0] = 0;
+            // holding[1] = 0;
+            // holding[2] = 0;
         }
         else
         {
@@ -237,10 +243,10 @@ void app_main()
             ESP_LOGI("ADC", "Pressure = %i mV, %.1f bar", voltage * 2, pressure);
             if (pressure > 2.8f || pressure < 0.8f)
             {
-                //holding[9] = 0;
-                //holding[0] = 0;
-                //holding[1] = 0;
-                //holding[2] = 0;
+                // holding[9] = 0;
+                // holding[0] = 0;
+                // holding[1] = 0;
+                // holding[2] = 0;
                 ESP_LOGW("ADC", "Pressure! Stop!", voltage * 2);
             }
         }
